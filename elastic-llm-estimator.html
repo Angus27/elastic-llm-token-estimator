@@ -1,0 +1,1323 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Elastic Security — LLM Token Estimator</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700&family=IBM+Plex+Mono:wght@400;500&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg: #0b0e14;
+    --surface: #111520;
+    --surface2: #161c28;
+    --border: #1e2740;
+    --border2: #2a3450;
+    --cyan: #00c2e0;
+    --cyan-dim: #0097b2;
+    --amber: #f59e0b;
+    --amber-dim: #b45309;
+    --green: #10b981;
+    --red: #f43f5e;
+    --pink: #e879f9;
+    --purple: #818cf8;
+    --text: #dde4f0;
+    --text2: #8896b0;
+    --text3: #4a5568;
+    --mono: 'IBM Plex Mono', monospace;
+    --sans: 'DM Sans', sans-serif;
+    --display: 'Inter', sans-serif;
+  }
+
+  html { scroll-behavior: smooth; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--sans);
+    font-size: 14px;
+    line-height: 1.6;
+    min-height: 100vh;
+  }
+
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background-image:
+      repeating-linear-gradient(0deg, transparent, transparent 39px, rgba(30,39,64,0.4) 39px, rgba(30,39,64,0.4) 40px),
+      repeating-linear-gradient(90deg, transparent, transparent 39px, rgba(30,39,64,0.4) 39px, rgba(30,39,64,0.4) 40px);
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  .app {
+    position: relative;
+    z-index: 1;
+    max-width: 1280px;
+    margin: 0 auto;
+    padding: 0 24px 60px;
+  }
+
+  /* ── HEADER ── */
+  header {
+    padding: 32px 0 28px;
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 32px;
+    flex-wrap: wrap;
+    gap: 16px;
+  }
+
+  .logo-area { display: flex; align-items: center; gap: 14px; }
+
+  .logo-mark {
+    width: 42px; height: 42px;
+    border: 0px solid var(--cyan);
+    border-radius: 6px;
+    display: flex; align-items: center; justify-content: center;
+    position: relative;
+    overflow: hidden;
+  }
+  .logo-mark::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(135deg, rgba(0,194,224,0.12) 0%, transparent 60%);
+  }
+  .logo-inner {
+    font-family: var(--mono);
+    font-size: 16px;
+    font-weight: 500;
+    color: var(--cyan);
+    letter-spacing: -1px;
+  }
+
+  .title-group h1 {
+    font-family: var(--display);
+    font-size: 20px;
+    font-weight: 700;
+    color: var(--text);
+    letter-spacing: -0.3px;
+  }
+
+  .title-group p {
+    font-size: 12px;
+    color: var(--text2);
+    font-family: var(--mono);
+    margin-top: 1px;
+  }
+
+  .header-badges { display: flex; gap: 8px; flex-wrap: wrap; }
+
+  .badge {
+    font-family: var(--mono);
+    font-size: 10px;
+    padding: 4px 10px;
+    border-radius: 4px;
+    border: 1px solid;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+  }
+  .badge-cyan  { color: var(--cyan);  border-color: rgba(0,194,224,0.35);  background: rgba(0,194,224,0.06); }
+  .badge-amber { color: var(--amber); border-color: rgba(245,158,11,0.35); background: rgba(245,158,11,0.06); }
+
+  /* ── LAYOUT ── */
+  .layout {
+    display: grid;
+    grid-template-columns: 400px 1fr;
+    gap: 24px;
+    align-items: start;
+  }
+
+  @media (max-width: 900px) {
+    .layout { grid-template-columns: 1fr; }
+  }
+
+  /* ── PANELS ── */
+  .panel {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    overflow: hidden;
+  }
+
+  .panel-header {
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    background: var(--surface2);
+  }
+
+  .panel-icon {
+    width: 28px; height: 28px;
+    border-radius: 6px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 13px;
+    flex-shrink: 0;
+  }
+  .icon-cyan   { background: rgba(0,194,224,0.1);  color: var(--cyan); }
+  .icon-amber  { background: rgba(245,158,11,0.1); color: var(--amber); }
+  .icon-purple { background: rgba(129,140,248,0.1);color: var(--purple); }
+  .icon-green  { background: rgba(16,185,129,0.1); color: var(--green); }
+
+  .panel-title {
+    font-family: var(--display);
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text);
+    letter-spacing: 0.02em;
+    flex: 1;
+  }
+
+  .panel-body { padding: 20px; }
+
+  /* ── BUTTONS ── */
+  .btn {
+    font-family: var(--mono);
+    font-size: 10px;
+    font-weight: 500;
+    padding: 4px 10px;
+    border-radius: 4px;
+    border: 1px solid;
+    cursor: pointer;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    transition: background 0.15s, color 0.15s;
+    background: transparent;
+    white-space: nowrap;
+  }
+  .btn-ghost { color: var(--text3); border-color: var(--border2); }
+  .btn-ghost:hover { color: var(--text2); background: rgba(255,255,255,0.04); }
+  .btn-cyan  { color: var(--cyan);  border-color: rgba(0,194,224,0.35); }
+  .btn-cyan:hover  { background: rgba(0,194,224,0.1); }
+  .btn-amber { color: var(--amber); border-color: rgba(245,158,11,0.35); }
+  .btn-amber:hover { background: rgba(245,158,11,0.08); }
+
+  /* ── SECTIONS inside input panel ── */
+  .input-section { margin-bottom: 24px; }
+  .input-section:last-child { margin-bottom: 0; }
+
+  .section-label {
+    font-family: var(--mono);
+    font-size: 10px;
+    font-weight: 500;
+    color: var(--cyan);
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    margin-bottom: 14px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .section-label::after {
+    content: '';
+    flex: 1;
+    height: 1px;
+    background: var(--border);
+  }
+
+  .input-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 11px;
+  }
+  .input-row:last-child { margin-bottom: 0; }
+
+  .input-label {
+    font-size: 12px;
+    color: var(--text2);
+    flex: 1;
+    line-height: 1.4;
+  }
+
+  .slider-wrap {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-shrink: 0;
+  }
+
+  input[type=range] {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 100px;
+    height: 4px;
+    border-radius: 2px;
+    background: var(--border2);
+    outline: none;
+    cursor: pointer;
+    flex-shrink: 0;
+  }
+  input[type=range]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 14px; height: 14px;
+    border-radius: 50%;
+    background: var(--cyan);
+    border: 2px solid var(--bg);
+    box-shadow: 0 0 0 1px var(--cyan);
+    cursor: pointer;
+    transition: transform 0.15s;
+  }
+  input[type=range]::-webkit-slider-thumb:hover { transform: scale(1.2); }
+  input[type=range]::-moz-range-thumb {
+    width: 14px; height: 14px;
+    border-radius: 50%;
+    background: var(--cyan);
+    border: 2px solid var(--bg);
+    cursor: pointer;
+  }
+  input[type=range].amber-slider::-webkit-slider-thumb { background: var(--amber); box-shadow: 0 0 0 1px var(--amber); }
+  input[type=range].amber-slider::-moz-range-thumb { background: var(--amber); }
+
+  /* ── NUMBER INPUTS ── */
+  .num-input {
+    font-family: var(--mono);
+    font-size: 11px;
+    font-weight: 500;
+    color: var(--cyan);
+    width: 58px;
+    background: var(--surface2);
+    border: 1px solid var(--border2);
+    border-radius: 4px;
+    padding: 2px 5px;
+    text-align: right;
+    -moz-appearance: textfield;
+    flex-shrink: 0;
+  }
+  .num-input::-webkit-outer-spin-button,
+  .num-input::-webkit-inner-spin-button { -webkit-appearance: none; appearance: none; }
+  .num-input:focus { outline: none; border-color: var(--cyan); box-shadow: 0 0 0 1px rgba(0,194,224,0.2); }
+  .num-input.amber { color: var(--amber); }
+  .num-input.amber:focus { border-color: var(--amber); box-shadow: 0 0 0 1px rgba(245,158,11,0.2); }
+  .pct-suffix { font-family: var(--mono); font-size: 11px; color: var(--text3); }
+
+  /* ── COST INPUTS ── */
+  .cost-input-wrap { display: flex; align-items: center; gap: 3px; }
+  .cost-prefix { font-family: var(--mono); font-size: 11px; color: var(--text3); }
+  .cost-num {
+    font-family: var(--mono);
+    font-size: 11px;
+    width: 68px;
+    background: var(--surface2);
+    border: 1px solid var(--border2);
+    border-radius: 4px;
+    color: var(--text);
+    padding: 2px 5px;
+    text-align: right;
+    -moz-appearance: textfield;
+  }
+  .cost-num::-webkit-outer-spin-button,
+  .cost-num::-webkit-inner-spin-button { -webkit-appearance: none; appearance: none; }
+  .cost-num:focus { outline: none; border-color: var(--amber); box-shadow: 0 0 0 1px rgba(245,158,11,0.2); }
+
+  .note-box {
+    background: rgba(0,194,224,0.04);
+    border: 1px solid rgba(0,194,224,0.12);
+    border-radius: 6px;
+    padding: 8px 12px;
+    font-size: 11px;
+    color: var(--text2);
+    line-height: 1.5;
+    margin-bottom: 14px;
+  }
+  .note-box.amber {
+    background: rgba(245,158,11,0.04);
+    border-color: rgba(245,158,11,0.15);
+  }
+
+  /* ── RESULTS ── */
+  .results-panel { position: sticky; top: 24px; }
+
+  .grand-total {
+    background: linear-gradient(135deg, rgba(0,194,224,0.08) 0%, rgba(0,194,224,0.02) 100%);
+    border: 1px solid rgba(0,194,224,0.25);
+    border-radius: 10px;
+    padding: 20px 24px;
+    margin-bottom: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 16px;
+  }
+
+  .grand-total-main .gt-label {
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--cyan-dim);
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    margin-bottom: 4px;
+  }
+
+  .grand-total-main .gt-value {
+    font-family: var(--display);
+    font-size: 40px;
+    font-weight: 700;
+    color: var(--cyan);
+    letter-spacing: -1px;
+    line-height: 1;
+    transition: all 0.2s;
+  }
+
+  .grand-total-sub {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    text-align: right;
+  }
+
+  .sub-stat .ss-label {
+    font-family: var(--mono);
+    font-size: 9px;
+    color: var(--text3);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+  }
+
+  .sub-stat .ss-value {
+    font-family: var(--mono);
+    font-size: 16px;
+    font-weight: 500;
+    color: var(--text2);
+  }
+
+  /* ── COST BANNER ── */
+  .cost-banner {
+    background: linear-gradient(135deg, rgba(245,158,11,0.08) 0%, rgba(245,158,11,0.02) 100%);
+    border: 1px solid rgba(245,158,11,0.25);
+    border-radius: 10px;
+    padding: 16px 24px;
+    margin-bottom: 20px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 16px;
+  }
+
+  .cost-banner-main .cb-label {
+    font-family: var(--mono);
+    font-size: 10px;
+    color: rgba(245,158,11,0.6);
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    margin-bottom: 4px;
+  }
+
+  .cost-banner-main .cb-value {
+    font-family: var(--display);
+    font-size: 32px;
+    font-weight: 700;
+    color: var(--amber);
+    letter-spacing: -1px;
+    line-height: 1;
+    transition: all 0.2s;
+  }
+
+  .cost-banner-sub {
+    display: flex;
+    gap: 20px;
+    text-align: right;
+  }
+
+  .cost-banner-sub .cs-label {
+    font-family: var(--mono);
+    font-size: 9px;
+    color: var(--text3);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+  }
+
+  .cost-banner-sub .cs-value {
+    font-family: var(--mono);
+    font-size: 15px;
+    font-weight: 500;
+    color: var(--text2);
+  }
+
+  /* ── METRIC CARDS ── */
+  .metric-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 10px;
+    margin-bottom: 20px;
+  }
+
+  @media (max-width: 700px) {
+    .metric-grid { grid-template-columns: 1fr 1fr; }
+  }
+
+  .metric-card {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 12px 14px;
+    transition: border-color 0.2s;
+  }
+  .metric-card:hover { border-color: var(--border2); }
+
+  .mc-label {
+    font-size: 10px;
+    color: var(--text3);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    margin-bottom: 4px;
+    font-family: var(--mono);
+  }
+
+  .mc-value {
+    font-family: var(--display);
+    font-size: 20px;
+    font-weight: 700;
+    color: var(--text);
+    line-height: 1.1;
+    transition: all 0.2s;
+  }
+
+  .mc-sub {
+    font-size: 10px;
+    color: var(--text3);
+    font-family: var(--mono);
+    margin-top: 2px;
+  }
+
+  /* ── COMPOSITION BAR ── */
+  .comp-section {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 16px 18px;
+    margin-bottom: 20px;
+  }
+
+  .comp-section-title {
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--text2);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    margin-bottom: 12px;
+  }
+
+  .comp-bar-outer {
+    height: 22px;
+    border-radius: 4px;
+    overflow: hidden;
+    display: flex;
+    background: var(--border);
+    margin-bottom: 12px;
+  }
+
+  .comp-seg {
+    height: 100%;
+    transition: width 0.3s ease;
+  }
+
+  .comp-legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px 16px;
+  }
+
+  .leg-item {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 11px;
+    color: var(--text2);
+    font-family: var(--mono);
+  }
+
+  .leg-dot {
+    width: 8px; height: 8px;
+    border-radius: 2px;
+    flex-shrink: 0;
+  }
+
+  /* ── BREAKDOWN TABLES ── */
+  .breakdown-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+    margin-bottom: 20px;
+  }
+
+  @media (max-width: 700px) {
+    .breakdown-grid { grid-template-columns: 1fr; }
+  }
+
+  .breakdown-card {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    overflow: hidden;
+  }
+
+  .breakdown-header {
+    padding: 10px 14px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background: rgba(255,255,255,0.02);
+  }
+
+  .breakdown-header span {
+    font-family: var(--mono);
+    font-size: 10px;
+    font-weight: 500;
+    color: var(--text2);
+    text-transform: uppercase;
+    letter-spacing: 0.07em;
+  }
+
+  .breakdown-table {
+    width: 100%;
+    border-collapse: collapse;
+  }
+
+  .breakdown-table tr {
+    border-bottom: 1px solid var(--border);
+    transition: background 0.15s;
+  }
+  .breakdown-table tr:last-child { border-bottom: none; }
+  .breakdown-table tr:hover { background: rgba(255,255,255,0.02); }
+  .breakdown-table tr.total-row { background: rgba(255,255,255,0.03); }
+
+  .breakdown-table td {
+    padding: 7px 14px;
+    font-size: 11px;
+    vertical-align: middle;
+  }
+
+  .breakdown-table td:first-child { color: var(--text2); }
+  .breakdown-table td:last-child {
+    text-align: right;
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--text);
+    white-space: nowrap;
+  }
+
+  .breakdown-table tr.total-row td { font-weight: 500; color: var(--text); }
+  .breakdown-table tr.total-row td:last-child { color: var(--cyan); }
+  .breakdown-table tr.total-row.amber-total td:last-child { color: var(--amber); }
+
+  /* ── SENSITIVITY ── */
+  .sensitivity {
+    background: rgba(245,158,11,0.04);
+    border: 1px solid rgba(245,158,11,0.15);
+    border-radius: 10px;
+    padding: 14px 18px;
+  }
+
+  .sens-title {
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--amber);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    margin-bottom: 8px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .sens-body {
+    font-size: 12px;
+    color: var(--text2);
+    line-height: 1.6;
+  }
+
+  .sens-body strong { color: var(--text); font-weight: 500; }
+
+  /* ── FOOTER ── */
+  footer {
+    margin-top: 48px;
+    padding-top: 20px;
+    border-top: 1px solid var(--border);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  footer p {
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--text3);
+    letter-spacing: 0.04em;
+  }
+
+  /* ── ANIMATIONS ── */
+  @keyframes fadeIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
+  .panel { animation: fadeIn 0.4s ease forwards; }
+  .panel:nth-child(2) { animation-delay: 0.1s; opacity: 0; animation-fill-mode: forwards; }
+
+  .pulse { animation: pulse 0.25s ease; }
+  @keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.5; } 100% { opacity: 1; } }
+</style>
+</head>
+<body>
+
+<div class="app">
+
+  <header>
+    <div class="logo-area">
+      <img src="elastic-icon.png" alt="Elastic" class="logo-mark">
+      <div class="title-group">
+        <h1>Elastic LLM Token Estimator</h1>
+        <p>elastic security · attack discovery &amp; ai assistant</p>
+      </div>
+    </div>
+    <div class="header-badges">
+      <span class="badge badge-cyan">Attack Discovery</span>
+      <span class="badge badge-amber">AI Assistant</span>
+    </div>
+  </header>
+
+  <div class="layout">
+
+    <!-- ── INPUTS ── -->
+    <div class="panel">
+      <div class="panel-header">
+        <div class="panel-icon icon-cyan">⚙</div>
+        <span class="panel-title">Assumptions &amp; inputs</span>
+        <button class="btn btn-ghost" onclick="resetDefaults()">↺ Reset</button>
+      </div>
+      <div class="panel-body">
+
+        <!-- SCALE -->
+        <div class="input-section">
+          <div class="section-label">Organisation scale</div>
+          <div class="note-box">Estimates use 30.44 calendar days / month (365 ÷ 12). All usage — including Attack Discovery — runs continuously, not just on working days.</div>
+
+          <div class="input-row">
+            <span class="input-label">Security analysts (AI Assistant users)</span>
+            <div class="slider-wrap">
+              <input type="range" min="1" max="200" step="1" id="users" value="20" oninput="syncNum('users');update()">
+              <input type="number" class="num-input" id="n-users" min="1" max="200" step="1" value="20" onchange="syncSlider('users')">
+            </div>
+          </div>
+          <div class="input-row">
+            <span class="input-label">Active analysts per day (%)</span>
+            <div class="slider-wrap">
+              <input type="range" min="10" max="100" step="5" id="active" value="60" oninput="syncNum('active');update()">
+              <input type="number" class="num-input" id="n-active" min="10" max="100" step="5" value="60" onchange="syncSlider('active')">
+              <span class="pct-suffix">%</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- AI ASSISTANT BEHAVIOUR -->
+        <div class="input-section">
+          <div class="section-label" style="color:var(--amber);">AI Assistant — session behaviour</div>
+
+          <div class="input-row">
+            <span class="input-label">Sessions per active analyst per day</span>
+            <div class="slider-wrap">
+              <input type="range" class="amber-slider" min="1" max="20" step="1" id="sessions" value="4" oninput="syncNum('sessions');update()">
+              <input type="number" class="num-input amber" id="n-sessions" min="1" max="20" step="1" value="4" onchange="syncSlider('sessions')">
+            </div>
+          </div>
+          <div class="input-row">
+            <span class="input-label">Turns per session (exchanges)</span>
+            <div class="slider-wrap">
+              <input type="range" class="amber-slider" min="2" max="30" step="1" id="turns" value="8" oninput="syncNum('turns');update()">
+              <input type="number" class="num-input amber" id="n-turns" min="2" max="30" step="1" value="8" onchange="syncSlider('turns')">
+            </div>
+          </div>
+          <div class="input-row">
+            <span class="input-label">Avg user message (tokens)</span>
+            <div class="slider-wrap">
+              <input type="range" class="amber-slider" min="20" max="500" step="10" id="usermsg" value="80" oninput="syncNum('usermsg');update()">
+              <input type="number" class="num-input amber" id="n-usermsg" min="20" max="500" step="10" value="80" onchange="syncSlider('usermsg')">
+            </div>
+          </div>
+          <div class="input-row">
+            <span class="input-label">Avg model response (tokens)</span>
+            <div class="slider-wrap">
+              <input type="range" class="amber-slider" min="100" max="2000" step="50" id="modresp" value="400" oninput="syncNum('modresp');update()">
+              <input type="number" class="num-input amber" id="n-modresp" min="100" max="2000" step="50" value="400" onchange="syncSlider('modresp')">
+            </div>
+          </div>
+        </div>
+
+        <!-- AI ASSISTANT CONTEXT -->
+        <div class="input-section">
+          <div class="section-label" style="color:var(--amber);">AI Assistant — context per turn</div>
+          <div class="note-box">These "invisible" tokens are injected by Elastic's backend on every API call — analysts don't see them, but they often dominate usage.</div>
+
+          <div class="input-row">
+            <span class="input-label">System prompt size (tokens)</span>
+            <div class="slider-wrap">
+              <input type="range" class="amber-slider" min="500" max="8000" step="100" id="sysprompt" value="2500" oninput="syncNum('sysprompt');update()">
+              <input type="number" class="num-input amber" id="n-sysprompt" min="500" max="8000" step="100" value="2500" onchange="syncSlider('sysprompt')">
+            </div>
+          </div>
+          <div class="input-row">
+            <span class="input-label">Knowledge base / RAG chunks (tokens)</span>
+            <div class="slider-wrap">
+              <input type="range" class="amber-slider" min="0" max="5000" step="100" id="rag" value="1500" oninput="syncNum('rag');update()">
+              <input type="number" class="num-input amber" id="n-rag" min="0" max="5000" step="100" value="1500" onchange="syncSlider('rag')">
+            </div>
+          </div>
+          <div class="input-row">
+            <span class="input-label">Alert / event context injected (tokens)</span>
+            <div class="slider-wrap">
+              <input type="range" class="amber-slider" min="0" max="10000" step="200" id="alertctx" value="2000" oninput="syncNum('alertctx');update()">
+              <input type="number" class="num-input amber" id="n-alertctx" min="0" max="10000" step="200" value="2000" onchange="syncSlider('alertctx')">
+            </div>
+          </div>
+          <div class="input-row">
+            <span class="input-label">History depth included (prior turns)</span>
+            <div class="slider-wrap">
+              <input type="range" class="amber-slider" min="0" max="20" step="1" id="hist" value="6" oninput="syncNum('hist');update()">
+              <input type="number" class="num-input amber" id="n-hist" min="0" max="20" step="1" value="6" onchange="syncSlider('hist')">
+            </div>
+          </div>
+        </div>
+
+        <!-- ATTACK DISCOVERY -->
+        <div class="input-section">
+          <div class="section-label">Attack Discovery</div>
+
+          <div class="input-row">
+            <span class="input-label">Runs per day</span>
+            <div class="slider-wrap">
+              <input type="range" min="1" max="48" step="1" id="adruns" value="4" oninput="syncNum('adruns');update()">
+              <input type="number" class="num-input" id="n-adruns" min="1" max="48" step="1" value="4" onchange="syncSlider('adruns')">
+            </div>
+          </div>
+          <div class="input-row">
+            <span class="input-label">Alerts per run (batch size)</span>
+            <div class="slider-wrap">
+              <input type="range" min="10" max="500" step="10" id="adalen" value="100" oninput="syncNum('adalen');update()">
+              <input type="number" class="num-input" id="n-adalen" min="10" max="500" step="10" value="100" onchange="syncSlider('adalen')">
+            </div>
+          </div>
+          <div class="input-row">
+            <span class="input-label">Tokens per alert (fields + values)</span>
+            <div class="slider-wrap">
+              <input type="range" min="100" max="1500" step="50" id="adatok" value="400" oninput="syncNum('adatok');update()">
+              <input type="number" class="num-input" id="n-adatok" min="100" max="1500" step="50" value="400" onchange="syncSlider('adatok')">
+            </div>
+          </div>
+          <div class="input-row">
+            <span class="input-label">AD system / task prompt (tokens)</span>
+            <div class="slider-wrap">
+              <input type="range" min="500" max="5000" step="100" id="adprompt" value="1500" oninput="syncNum('adprompt');update()">
+              <input type="number" class="num-input" id="n-adprompt" min="500" max="5000" step="100" value="1500" onchange="syncSlider('adprompt')">
+            </div>
+          </div>
+          <div class="input-row">
+            <span class="input-label">AD output per run — attack summaries</span>
+            <div class="slider-wrap">
+              <input type="range" min="200" max="3000" step="100" id="adout" value="800" oninput="syncNum('adout');update()">
+              <input type="number" class="num-input" id="n-adout" min="200" max="3000" step="100" value="800" onchange="syncSlider('adout')">
+            </div>
+          </div>
+        </div>
+
+        <!-- PRICING -->
+        <div class="input-section">
+          <div class="section-label" style="color:var(--purple);">Model pricing (per 1M tokens)</div>
+          <div class="note-box amber">Default: Claude Sonnet 4.6 · $3.00 input / $15.00 output. Adjust for your deployed model.</div>
+
+          <div class="input-row">
+            <span class="input-label">Input token cost ($/1M)</span>
+            <div class="cost-input-wrap">
+              <span class="cost-prefix">$</span>
+              <input type="number" class="cost-num" id="costIn" min="0" step="0.01" value="3.00" oninput="update()">
+            </div>
+          </div>
+          <div class="input-row">
+            <span class="input-label">Output token cost ($/1M)</span>
+            <div class="cost-input-wrap">
+              <span class="cost-prefix">$</span>
+              <input type="number" class="cost-num" id="costOut" min="0" step="0.01" value="15.00" oninput="update()">
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- ── RESULTS ── -->
+    <div class="panel results-panel">
+      <div class="panel-header">
+        <div class="panel-icon icon-purple">◈</div>
+        <span class="panel-title">Estimates</span>
+        <button class="btn btn-cyan" onclick="doExportJSON()">↓ JSON</button>
+        <button class="btn btn-amber" onclick="doExportCSV()">↓ CSV</button>
+      </div>
+      <div class="panel-body">
+
+        <!-- Token grand total -->
+        <div class="grand-total">
+          <div class="grand-total-main">
+            <div class="gt-label">Total tokens / month</div>
+            <div class="gt-value" id="grand-total">—</div>
+          </div>
+          <div class="grand-total-sub">
+            <div class="sub-stat">
+              <div class="ss-label">Input tokens / month</div>
+              <div class="ss-value" id="total-input">—</div>
+            </div>
+            <div class="sub-stat">
+              <div class="ss-label">Output tokens / month</div>
+              <div class="ss-value" id="total-output">—</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Cost banner -->
+        <div class="cost-banner">
+          <div class="cost-banner-main">
+            <div class="cb-label">Est. total monthly cost</div>
+            <div class="cb-value" id="grand-cost">—</div>
+          </div>
+          <div class="cost-banner-sub">
+            <div>
+              <div class="cs-label">AI Assistant</div>
+              <div class="cs-value" id="asst-cost">—</div>
+            </div>
+            <div>
+              <div class="cs-label">Attack Discovery</div>
+              <div class="cs-value" id="ad-cost">—</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Metric cards -->
+        <div class="metric-grid" id="metric-cards"></div>
+
+        <!-- Composition bar -->
+        <div class="comp-section">
+          <div class="comp-section-title">Token composition — where tokens come from</div>
+          <div class="comp-bar-outer" id="comp-bar"></div>
+          <div class="comp-legend" id="comp-legend"></div>
+        </div>
+
+        <!-- Per-call breakdowns -->
+        <div class="breakdown-grid">
+          <div class="breakdown-card">
+            <div class="breakdown-header">
+              <div class="panel-icon icon-amber" style="width:20px;height:20px;font-size:10px;">⬡</div>
+              <span>AI Assistant — per turn</span>
+            </div>
+            <table class="breakdown-table" id="asst-table"></table>
+          </div>
+          <div class="breakdown-card">
+            <div class="breakdown-header">
+              <div class="panel-icon icon-cyan" style="width:20px;height:20px;font-size:10px;">◎</div>
+              <span>Attack Discovery — per run</span>
+            </div>
+            <table class="breakdown-table" id="ad-table"></table>
+          </div>
+        </div>
+
+        <!-- Sensitivity -->
+        <div class="sensitivity">
+          <div class="sens-title">⚠ Key sensitivities</div>
+          <div class="sens-body" id="sens-body">—</div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+  <footer>
+    <p>Elastic Security · LLM Token Estimator · Estimates only — actual usage varies by model, configuration, and behaviour</p>
+    <p>30.44 days/month · Claude Sonnet 4.6 defaults · Adjust inputs to reflect your environment</p>
+  </footer>
+
+</div>
+
+<script>
+const DAYS = 365 / 12; // 30.44 calendar days per month
+
+const DEFAULTS = {
+  users: 20, active: 60, sessions: 4, turns: 8,
+  usermsg: 80, modresp: 400, sysprompt: 2500, rag: 1500,
+  alertctx: 2000, hist: 6, adruns: 4, adalen: 100,
+  adatok: 400, adprompt: 1500, adout: 800,
+  costIn: 3.00, costOut: 15.00
+};
+
+const SLIDER_IDS = ['users','active','sessions','turns','usermsg','modresp','sysprompt','rag','alertctx','hist','adruns','adalen','adatok','adprompt','adout'];
+
+const segments = [
+  { id: 'sysprompt_seg', label: 'Asst system prompt', color: '#4f8ef7' },
+  { id: 'rag_seg',       label: 'Asst RAG / KB',      color: '#10b981' },
+  { id: 'alertctx_seg',  label: 'Asst alert context', color: '#f59e0b' },
+  { id: 'hist_seg',      label: 'Asst history',        color: '#e879f9' },
+  { id: 'usermsg_seg',   label: 'Asst user msgs',      color: '#818cf8' },
+  { id: 'modresp_seg',   label: 'Asst responses',      color: '#64748b' },
+  { id: 'adalert_seg',   label: 'AD alert data',       color: '#00c2e0' },
+  { id: 'adother_seg',   label: 'AD prompt + resp',    color: '#0e7490' },
+];
+
+let lastState = null;
+
+function fmt(n) {
+  n = Math.round(n);
+  if (n >= 1e9) return (n / 1e9).toFixed(2) + 'B';
+  if (n >= 1e6) return (n / 1e6).toFixed(2) + 'M';
+  if (n >= 1e3) return (n / 1e3).toFixed(1) + 'K';
+  return n.toLocaleString();
+}
+
+function fmtFull(n) { return Math.round(n).toLocaleString(); }
+
+function fmtCost(n) {
+  if (!isFinite(n) || isNaN(n) || n < 0) return '$0.00';
+  if (n >= 1e6) return '$' + (n / 1e6).toFixed(2) + 'M';
+  if (n >= 1000) return '$' + (n / 1000).toFixed(1) + 'K';
+  if (n >= 1) return '$' + n.toFixed(2);
+  return '$' + n.toFixed(4);
+}
+
+function el(id) { return document.getElementById(id); }
+
+// Average effective history depth across a session, accounting for
+// early turns that have fewer prior turns than the max depth setting.
+function avgHistDepth(turns, hist) {
+  if (turns <= 1) return 0;
+  if (turns <= hist + 1) return (turns - 1) / 2;
+  return (hist * (hist + 1) / 2 + (turns - 1 - hist) * hist) / turns;
+}
+
+function syncNum(id) {
+  const num = el('n-' + id);
+  if (num) num.value = el(id).value;
+}
+
+function syncSlider(id) {
+  const num = el('n-' + id);
+  const slider = el(id);
+  if (!num || !slider) return;
+  let v = parseFloat(num.value);
+  if (isNaN(v)) return;
+  const step = parseFloat(slider.step) || 1;
+  v = Math.round(v / step) * step;
+  v = Math.min(Math.max(v, parseFloat(slider.min)), parseFloat(slider.max));
+  slider.value = v;
+  num.value = v;
+  update();
+}
+
+function saveAll() {
+  SLIDER_IDS.forEach(id => localStorage.setItem('llm_' + id, el(id).value));
+  localStorage.setItem('llm_costIn',  el('costIn').value);
+  localStorage.setItem('llm_costOut', el('costOut').value);
+}
+
+function loadAll() {
+  SLIDER_IDS.forEach(id => {
+    const v = localStorage.getItem('llm_' + id);
+    if (v !== null) {
+      el(id).value = v;
+      const num = el('n-' + id);
+      if (num) num.value = v;
+    }
+  });
+  const ci = localStorage.getItem('llm_costIn');
+  const co = localStorage.getItem('llm_costOut');
+  if (ci !== null) el('costIn').value = ci;
+  if (co !== null) el('costOut').value = co;
+}
+
+function resetDefaults() {
+  SLIDER_IDS.forEach(id => {
+    el(id).value = DEFAULTS[id];
+    const num = el('n-' + id);
+    if (num) num.value = DEFAULTS[id];
+    localStorage.removeItem('llm_' + id);
+  });
+  el('costIn').value  = DEFAULTS.costIn;
+  el('costOut').value = DEFAULTS.costOut;
+  localStorage.removeItem('llm_costIn');
+  localStorage.removeItem('llm_costOut');
+  update();
+}
+
+function doExportJSON() {
+  if (!lastState) return;
+  const blob = new Blob([JSON.stringify(lastState, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'elastic-llm-estimate.json';
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+function doExportCSV() {
+  if (!lastState) return;
+  const s = lastState;
+  const rows = [
+    ['Category', 'Metric', 'Value', 'Unit'],
+    ['Input', 'Security analysts', s.inputs.users, 'count'],
+    ['Input', 'Active analysts per day', s.inputs.active_pct, '%'],
+    ['Input', 'Sessions per analyst per day', s.inputs.sessions, 'sessions'],
+    ['Input', 'Turns per session', s.inputs.turns, 'exchanges'],
+    ['Input', 'Avg user message', s.inputs.usermsg, 'tokens'],
+    ['Input', 'Avg model response', s.inputs.modresp, 'tokens'],
+    ['Input', 'System prompt', s.inputs.sysprompt, 'tokens'],
+    ['Input', 'RAG / KB chunks', s.inputs.rag, 'tokens'],
+    ['Input', 'Alert context per turn', s.inputs.alertctx, 'tokens'],
+    ['Input', 'History depth', s.inputs.hist, 'prior turns'],
+    ['Input', 'AD runs per day', s.inputs.adruns, 'runs'],
+    ['Input', 'Alerts per AD run', s.inputs.adalen, 'alerts'],
+    ['Input', 'Tokens per alert', s.inputs.adatok, 'tokens'],
+    ['Input', 'AD system prompt', s.inputs.adprompt, 'tokens'],
+    ['Input', 'AD output per run', s.inputs.adout, 'tokens'],
+    ['Input', 'Input token cost', s.inputs.cost_per_1M_input, '$/1M tokens'],
+    ['Input', 'Output token cost', s.inputs.cost_per_1M_output, '$/1M tokens'],
+    ['', '', '', ''],
+    ['Output - Summary', 'Total tokens / month', s.outputs.grand_total_tokens, 'tokens'],
+    ['Output - Summary', 'Total input tokens / month', s.outputs.total_input_tokens, 'tokens'],
+    ['Output - Summary', 'Total output tokens / month', s.outputs.total_output_tokens, 'tokens'],
+    ['Output - Summary', 'Total monthly cost', s.outputs.grand_cost_usd, 'USD'],
+    ['', '', '', ''],
+    ['Output - AI Assistant', 'Total tokens / month', s.outputs.ai_assistant.total_tokens, 'tokens'],
+    ['Output - AI Assistant', 'Input tokens / month', s.outputs.ai_assistant.input_tokens, 'tokens'],
+    ['Output - AI Assistant', 'Output tokens / month', s.outputs.ai_assistant.output_tokens, 'tokens'],
+    ['Output - AI Assistant', 'Monthly cost', s.outputs.ai_assistant.cost_usd, 'USD'],
+    ['Output - AI Assistant', 'Avg input tokens / turn', s.outputs.ai_assistant.avg_input_per_turn, 'tokens'],
+    ['Output - AI Assistant', 'Avg total tokens / turn', s.outputs.ai_assistant.avg_tokens_per_turn, 'tokens'],
+    ['', '', '', ''],
+    ['Output - Attack Discovery', 'Total tokens / month', s.outputs.attack_discovery.total_tokens, 'tokens'],
+    ['Output - Attack Discovery', 'Input tokens / month', s.outputs.attack_discovery.input_tokens, 'tokens'],
+    ['Output - Attack Discovery', 'Output tokens / month', s.outputs.attack_discovery.output_tokens, 'tokens'],
+    ['Output - Attack Discovery', 'Monthly cost', s.outputs.attack_discovery.cost_usd, 'USD'],
+    ['Output - Attack Discovery', 'Runs / month', s.outputs.attack_discovery.runs_per_month, 'runs'],
+    ['Output - Attack Discovery', 'Input tokens / run', s.outputs.attack_discovery.input_per_run, 'tokens'],
+    ['Output - Attack Discovery', 'Total tokens / run', s.outputs.attack_discovery.tokens_per_run, 'tokens'],
+  ];
+  const csv = rows.map(r => r.map(c => '"' + String(c).replace(/"/g, '""') + '"').join(',')).join('\n');
+  const blob = new Blob([csv], { type: 'text/csv' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'elastic-llm-estimate.csv';
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+function update() {
+  const g = id => parseFloat(el(id).value);
+
+  const users     = g('users');
+  const active    = g('active') / 100;
+  const sessions  = g('sessions');
+  const turns     = g('turns');
+  const usermsg   = g('usermsg');
+  const modresp   = g('modresp');
+  const sysprompt = g('sysprompt');
+  const rag       = g('rag');
+  const alertctx  = g('alertctx');
+  const hist      = g('hist');
+  const adruns    = g('adruns');
+  const adalen    = g('adalen');
+  const adatok    = g('adatok');
+  const adprompt  = g('adprompt');
+  const adout     = g('adout');
+  const costIn    = parseFloat(el('costIn').value)  || 0;
+  const costOut   = parseFloat(el('costOut').value) || 0;
+
+  const activeUsers   = Math.round(users * active);
+  const dailySessions = activeUsers * sessions;
+  const turnsPerDay   = dailySessions * turns;
+
+  // Correct average history depth: accounts for turns where fewer than
+  // `hist` prior turns exist (e.g. turn 1 always has zero history).
+  const histDepth     = avgHistDepth(turns, hist);
+  const avgHistTokens = histDepth * (usermsg + modresp);
+
+  const avgInputPerTurn  = sysprompt + rag + alertctx + usermsg + avgHistTokens;
+  const avgOutputPerTurn = modresp;
+  const avgTotalPerTurn  = avgInputPerTurn + avgOutputPerTurn;
+
+  const monthlyAsstInput  = turnsPerDay * avgInputPerTurn  * DAYS;
+  const monthlyAsstOutput = turnsPerDay * avgOutputPerTurn * DAYS;
+  const monthlyAsstTotal  = monthlyAsstInput + monthlyAsstOutput;
+
+  const adInputPerRun  = adprompt + adalen * adatok;
+  const adOutputPerRun = adout;
+  const adTotalPerRun  = adInputPerRun + adOutputPerRun;
+  const adRunsPerMonth = adruns * DAYS;
+  const monthlyAdInput  = adRunsPerMonth * adInputPerRun;
+  const monthlyAdOutput = adRunsPerMonth * adOutputPerRun;
+  const monthlyAdTotal  = monthlyAdInput + monthlyAdOutput;
+
+  const totalInput  = monthlyAsstInput  + monthlyAdInput;
+  const totalOutput = monthlyAsstOutput + monthlyAdOutput;
+  const grandTotal  = totalInput + totalOutput;
+
+  const asstCost  = (monthlyAsstInput * costIn + monthlyAsstOutput * costOut) / 1e6;
+  const adCost    = (monthlyAdInput   * costIn + monthlyAdOutput   * costOut) / 1e6;
+  const grandCost = asstCost + adCost;
+
+  /* — pulse animations — */
+  ['grand-total','total-input','total-output','grand-cost','asst-cost','ad-cost'].forEach(id => {
+    const e = el(id);
+    e.classList.remove('pulse');
+    void e.offsetWidth;
+    e.classList.add('pulse');
+  });
+
+  /* — token totals — */
+  el('grand-total').textContent  = fmt(grandTotal);
+  el('total-input').textContent  = fmt(totalInput);
+  el('total-output').textContent = fmt(totalOutput);
+
+  /* — cost totals — */
+  el('grand-cost').textContent = fmtCost(grandCost);
+  el('asst-cost').textContent  = fmtCost(asstCost);
+  el('ad-cost').textContent    = fmtCost(adCost);
+
+  /* — metric cards — */
+  const metrics = [
+    { label: 'Active analysts/day', value: fmt(activeUsers),        sub: 'of ' + Math.round(users) + ' total' },
+    { label: 'Sessions/day',        value: fmt(dailySessions),       sub: Math.round(turns) + ' turns each' },
+    { label: 'AI Asst tokens/mo',   value: fmt(monthlyAsstTotal),    sub: 'in: ' + fmt(monthlyAsstInput) },
+    { label: 'Atk Disc tokens/mo',  value: fmt(monthlyAdTotal),      sub: Math.round(adRunsPerMonth) + ' runs/mo' },
+    { label: 'Tokens/turn (avg)',   value: fmt(avgTotalPerTurn),     sub: 'in: ' + fmt(avgInputPerTurn) },
+    { label: 'Tokens/AD run',       value: fmt(adTotalPerRun),       sub: 'in: ' + fmt(adInputPerRun) },
+  ];
+  el('metric-cards').innerHTML = metrics.map(m =>
+    `<div class="metric-card">
+      <div class="mc-label">${m.label}</div>
+      <div class="mc-value">${m.value}</div>
+      <div class="mc-sub">${m.sub}</div>
+    </div>`
+  ).join('');
+
+  /* — composition bar — */
+  const segVals = [
+    sysprompt     * turnsPerDay * DAYS,
+    rag           * turnsPerDay * DAYS,
+    alertctx      * turnsPerDay * DAYS,
+    avgHistTokens * turnsPerDay * DAYS,
+    usermsg       * turnsPerDay * DAYS,
+    monthlyAsstOutput,
+    adalen * adatok * adRunsPerMonth,
+    (adprompt + adout) * adRunsPerMonth,
+  ];
+  const compTotal = segVals.reduce((s, v) => s + v, 0);
+
+  el('comp-bar').innerHTML = segments.map((s, i) =>
+    `<div class="comp-seg" style="width:${(segVals[i] / compTotal * 100).toFixed(1)}%;background:${s.color};"></div>`
+  ).join('');
+
+  el('comp-legend').innerHTML = segments.map((s, i) =>
+    `<span class="leg-item"><span class="leg-dot" style="background:${s.color};"></span>${s.label} ${(segVals[i] / compTotal * 100).toFixed(0)}%</span>`
+  ).join('');
+
+  /* — assistant breakdown table — */
+  const asstRows = [
+    ['System prompt (fixed per call)',                                          fmtFull(sysprompt),       false],
+    ['RAG / knowledge base retrieval',                                          fmtFull(rag),             false],
+    ['Alert / event context',                                                   fmtFull(alertctx),        false],
+    ['Conv. history (avg ' + histDepth.toFixed(1) + ' turns × ' + fmtFull(usermsg + modresp) + ' tok)', fmtFull(Math.round(avgHistTokens)), false],
+    ['User message',                                                            fmtFull(usermsg),         false],
+    ['Total input tokens / turn',                                               fmtFull(avgInputPerTurn), true],
+    ['Model response (output)',                                                  fmtFull(modresp),         false],
+    ['Total tokens / turn',                                                     fmtFull(avgTotalPerTurn), true],
+  ];
+  el('asst-table').innerHTML = asstRows.map(([n, v, t]) =>
+    `<tr class="${t ? 'total-row amber-total' : ''}"><td>${n}</td><td>${v}</td></tr>`
+  ).join('');
+
+  /* — AD breakdown table — */
+  const adRows = [
+    ['System / task prompt',                                                      fmtFull(adprompt),              false],
+    ['Alert data (' + Math.round(adalen) + ' × ' + Math.round(adatok) + ' tok)', fmtFull(adalen * adatok),       false],
+    ['Total input tokens / run',                                                  fmtFull(adInputPerRun),         true],
+    ['Output — attack summaries',                                                 fmtFull(adout),                 false],
+    ['Total tokens / run',                                                        fmtFull(adTotalPerRun),         true],
+    ['Runs / month (' + Math.round(adruns) + '/day × ' + DAYS.toFixed(1) + ' d)', Math.round(adRunsPerMonth),   false],
+    ['Total AD tokens / month',                                                   fmtFull(monthlyAdTotal),        true],
+  ];
+  el('ad-table').innerHTML = adRows.map(([n, v, t]) =>
+    `<tr class="${t ? 'total-row' : ''}"><td>${n}</td><td>${v}</td></tr>`
+  ).join('');
+
+  /* — sensitivity — */
+  const biggest    = segments.reduce((a, b, i) => segVals[i] > segVals[a.i] ? { i, ...b } : a, { i: 0, ...segments[0] });
+  const biggestPct = (segVals[biggest.i] / grandTotal * 100).toFixed(0);
+  const pctAsst    = (monthlyAsstTotal / grandTotal * 100).toFixed(0);
+  const pctAd      = (monthlyAdTotal   / grandTotal * 100).toFixed(0);
+  const histPct    = (avgHistTokens / Math.max(avgInputPerTurn, 1) * 100).toFixed(0);
+  const histSaving = Math.max(0, (avgHistDepth(turns, hist) - avgHistDepth(turns, 3)) * (usermsg + modresp) * turnsPerDay * DAYS);
+  const ctxSaving  = alertctx * 0.75 * turnsPerDay * DAYS;
+
+  el('sens-body').innerHTML =
+    `<strong>Biggest single driver:</strong> ${biggest.label} (${biggestPct}% of all tokens). ` +
+    `AI Assistant accounts for <strong>${pctAsst}%</strong> of total usage; Attack Discovery <strong>${pctAd}%</strong>.<br><br>` +
+    `<strong>History compounds fast:</strong> ${histPct}% of every input turn is re-sent conversation history ` +
+    `(effective avg depth: ${histDepth.toFixed(1)} turns). ` +
+    `Reducing history depth from ${Math.round(hist)} to 3 prior turns saves roughly ${fmt(histSaving)} tokens/month.<br><br>` +
+    `<strong>Alert context is the biggest per-turn lever:</strong> cutting injected alert context by 75% would save ~${fmt(ctxSaving)} tokens/month from the Assistant alone. ` +
+    `For Attack Discovery, halving the alert batch size halves the per-run cost.`;
+
+  /* — state snapshot for export — */
+  lastState = {
+    generated: new Date().toISOString(),
+    model_pricing_reference: 'Claude Sonnet 4.6',
+    inputs: {
+      users: Math.round(users),
+      active_pct: Math.round(active * 100),
+      sessions, turns, usermsg, modresp, sysprompt, rag, alertctx, hist,
+      adruns, adalen, adatok, adprompt, adout,
+      cost_per_1M_input: costIn,
+      cost_per_1M_output: costOut,
+      days_per_month: parseFloat(DAYS.toFixed(4)),
+    },
+    outputs: {
+      grand_total_tokens:  Math.round(grandTotal),
+      total_input_tokens:  Math.round(totalInput),
+      total_output_tokens: Math.round(totalOutput),
+      grand_cost_usd:      parseFloat(grandCost.toFixed(2)),
+      ai_assistant: {
+        total_tokens:       Math.round(monthlyAsstTotal),
+        input_tokens:       Math.round(monthlyAsstInput),
+        output_tokens:      Math.round(monthlyAsstOutput),
+        cost_usd:           parseFloat(asstCost.toFixed(2)),
+        avg_input_per_turn: Math.round(avgInputPerTurn),
+        avg_tokens_per_turn:Math.round(avgTotalPerTurn),
+        avg_hist_depth:     parseFloat(histDepth.toFixed(2)),
+      },
+      attack_discovery: {
+        total_tokens:   Math.round(monthlyAdTotal),
+        input_tokens:   Math.round(monthlyAdInput),
+        output_tokens:  Math.round(monthlyAdOutput),
+        cost_usd:       parseFloat(adCost.toFixed(2)),
+        runs_per_month: Math.round(adRunsPerMonth),
+        input_per_run:  Math.round(adInputPerRun),
+        tokens_per_run: Math.round(adTotalPerRun),
+      },
+    },
+  };
+
+  saveAll();
+}
+
+loadAll();
+update();
+</script>
+</body>
+</html>
